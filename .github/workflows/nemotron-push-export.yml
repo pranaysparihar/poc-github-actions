@@ -1,0 +1,104 @@
+name: Push export pinned Nemotron chunks
+on:
+  push:
+    branches:
+      - agent/nemotron-push-runner
+    paths:
+      - 'nemotron_push/**'
+      - '.github/workflows/nemotron-push-export.yml'
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: nemotron_push/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .hf-cache
+          key: nemotron-3-embed-1b-bf16-0677b2025cbc
+      - run: python -m pip install -r nemotron_push/requirements.txt
+      - name: Resolve, verify, split
+        run: |
+          mkdir -p parts
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          import hashlib,pathlib
+          p=pathlib.Path(hf_hub_download('nvidia/Nemotron-3-Embed-1B-BF16',filename='model.safetensors'))
+          expected='f959c3b04e66b42de280bfb97c140cb7e0bfe25e3ecb0b4464c68a8436b2d04f'
+          h=hashlib.sha256()
+          with p.open('rb') as f:
+            for b in iter(lambda:f.read(8<<20),b''):h.update(b)
+          assert h.hexdigest()==expected,h.hexdigest()
+          size=400_000_000
+          chunks=[]
+          with p.open('rb') as f:
+            i=0
+            while True:
+              b=f.read(size)
+              if not b:break
+              q=pathlib.Path('parts')/f'part-{i:02d}.bin';q.write_bytes(b)
+              pathlib.Path(str(q)+'.sha256').write_text(hashlib.sha256(b).hexdigest()+'  '+q.name+'\n')
+              chunks.append(q);i+=1
+          assert len(chunks)==6,len(chunks)
+          pathlib.Path('parts/full.sha256').write_text(expected+'  model.safetensors\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: push-nemotron-part-00
+          path: |
+            parts/part-00.bin
+            parts/part-00.bin.sha256
+            parts/full.sha256
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: push-nemotron-part-01
+          path: |
+            parts/part-01.bin
+            parts/part-01.bin.sha256
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: push-nemotron-part-02
+          path: |
+            parts/part-02.bin
+            parts/part-02.bin.sha256
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: push-nemotron-part-03
+          path: |
+            parts/part-03.bin
+            parts/part-03.bin.sha256
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: push-nemotron-part-04
+          path: |
+            parts/part-04.bin
+            parts/part-04.bin.sha256
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: push-nemotron-part-05
+          path: |
+            parts/part-05.bin
+            parts/part-05.bin.sha256
+          compression-level: 0
+          retention-days: 1
