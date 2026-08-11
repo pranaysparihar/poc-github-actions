@@ -1,0 +1,57 @@
+name: Nemotron lossless 50pct probe
+
+on:
+  pull_request:
+    paths:
+      - 'nemotron_lossless_lab/**'
+      - '.github/workflows/nemotron-lossless-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: nemotron_lossless_lab/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r nemotron_lossless_lab/requirements.txt
+      - name: Run exact held-out probe
+        run: |
+          mkdir -p results
+          python nemotron_lossless_lab/probe.py \
+            --max-tensors 12 \
+            --sample-mib-per-tensor 6 \
+            --output results/nemotron-probe.json
+      - name: Summarize result
+        if: always()
+        run: |
+          if test -f results/nemotron-probe.json; then
+            python - <<'PY'
+          import json
+          p='results/nemotron-probe.json'
+          d=json.load(open(p))
+          print(json.dumps(d['aggregate'], indent=2, sort_keys=True))
+          PY
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nemotron-lossless-probe
+          path: results/
+          if-no-files-found: warn
+          retention-days: 7
