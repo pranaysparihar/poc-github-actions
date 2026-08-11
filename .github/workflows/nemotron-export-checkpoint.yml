@@ -1,0 +1,47 @@
+name: Export pinned Nemotron checkpoint
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nemotron-export-checkpoint.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: nemotron_lossless_lab/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .hf-cache
+          key: nemotron-3-embed-1b-bf16-0677b2025cbc
+      - run: python -m pip install -r nemotron_lossless_lab/requirements.txt
+      - name: Resolve and pin model
+        run: |
+          mkdir -p exported
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          import hashlib, pathlib, shutil
+          src=pathlib.Path(hf_hub_download('nvidia/Nemotron-3-Embed-1B-BF16',filename='model.safetensors'))
+          h=hashlib.sha256(src.read_bytes()).hexdigest()
+          assert h=='f959c3b04e66b42de280bfb97c140cb7e0bfe25e3ecb0b4464c68a8436b2d04f',h
+          shutil.copyfile(src,'exported/model.safetensors')
+          pathlib.Path('exported/SHA256').write_text(h+'  model.safetensors\n')
+          print(src,src.stat().st_size,h)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nemotron-3-embed-1b-bf16-pinned
+          path: exported/
+          compression-level: 0
+          retention-days: 1
