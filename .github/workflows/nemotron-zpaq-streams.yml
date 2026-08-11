@@ -1,0 +1,60 @@
+name: Nemotron exact bitstream context probe
+on:
+  pull_request:
+    paths:
+      - 'nemotron_lossless_lab/stream_probe.py'
+      - '.github/workflows/nemotron-zpaq-streams.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  zpaq-streams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: nemotron_lossless_lab/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .hf-cache
+          key: nemotron-3-embed-1b-bf16-0677b2025cbc
+      - run: |
+          python -m pip install -r nemotron_lossless_lab/requirements.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y zpaq
+      - name: Build exact stream layouts
+        run: python nemotron_lossless_lab/stream_probe.py --total-mib 32 --outdir streams
+      - name: Run maximum context mixing and verify extraction
+        run: |
+          mkdir -p results extracted
+          python - <<'PY'
+          import json,subprocess,pathlib,hashlib,os,time
+          m=json.load(open('streams/manifest.json')); out={}
+          for fn,meta in m['streams'].items():
+              arc=pathlib.Path('results')/(fn+'.zpaq')
+              t=time.time()
+              subprocess.run(['zpaq','add',str(arc),str(pathlib.Path('streams')/fn),'-method','5','-threads','2'],check=True)
+              secs=time.time()-t
+              # Extract each archive into a clean directory and verify exact stream hash.
+              dest=pathlib.Path('extracted')/fn;dest.mkdir(parents=True,exist_ok=True)
+              subprocess.run(['zpaq','extract',str(arc),'-to',str(dest)],check=True)
+              found=list(dest.rglob(fn)); assert len(found)==1,(fn,found)
+              h=hashlib.sha256(found[0].read_bytes()).hexdigest();assert h==meta['sha256'],(fn,h)
+              out[fn]={'original':meta['bytes'],'archive':arc.stat().st_size,'ratio':arc.stat().st_size/meta['bytes'],'bits_per_bf16':16*arc.stat().st_size/meta['bytes'],'seconds':secs,'verified':True}
+              print(fn,out[fn],flush=True)
+          json.dump({'source':m,'results':out},open('results/zpaq-results.json','w'),indent=2,sort_keys=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nemotron-zpaq-streams
+          path: results/zpaq-results.json
+          retention-days: 7
