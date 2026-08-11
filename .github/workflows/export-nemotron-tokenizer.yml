@@ -1,0 +1,25 @@
+name: Export Nemotron tokenizer
+on:
+  pull_request:
+    paths:
+      - 'nemotron_export/export_tokenizer.py'
+      - '.github/workflows/export-nemotron-tokenizer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export-tokenizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install huggingface_hub==0.34.4 hf_transfer==0.1.9
+      - run: python nemotron_export/export_tokenizer.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nemotron-tokenizer
+          path: tokenizer_export/
+          retention-days: 1
