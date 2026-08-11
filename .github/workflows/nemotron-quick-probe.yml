@@ -1,0 +1,56 @@
+name: Nemotron bounded exact probe
+
+on:
+  pull_request:
+    paths:
+      - 'nemotron_lossless_lab/quick_probe.py'
+      - 'nemotron_lossless_lab/requirements.txt'
+      - '.github/workflows/nemotron-quick-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quick-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free runner disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: nemotron_lossless_lab/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .hf-cache
+          key: nemotron-3-embed-1b-bf16-0677b2025cbc
+      - run: python -m pip install -r nemotron_lossless_lab/requirements.txt
+      - name: Run bounded exact probe
+        run: |
+          mkdir -p results
+          python nemotron_lossless_lab/quick_probe.py \
+            --max-tensors 12 \
+            --sample-mib 6 \
+            --output results/nemotron-quick.json
+      - name: Print acceptance numbers
+        if: always()
+        run: |
+          test ! -f results/nemotron-quick.json || python - <<'PY'
+          import json
+          d=json.load(open('results/nemotron-quick.json'))
+          print(json.dumps(d['aggregate'],indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nemotron-bounded-exact-probe
+          path: results/
+          if-no-files-found: warn
+          retention-days: 7
