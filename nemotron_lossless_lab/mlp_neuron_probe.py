@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exact coupled-neuron representation for SwiGLU layers.
 
-A hidden MLP neuron is the triplet (gate row, up row, down column).  The same
+A hidden MLP neuron is the triplet (gate row, up row, down column). The same
 permutation acts on all three tensors, so we search canonical orderings in the
 joint space and measure exact reversible residuals, charging the permutation.
 """
@@ -42,7 +42,7 @@ def morton(f,bits=8):
   for j in range(q.shape[1]):key|=((q[:,j]>>b)&1).astype(np.uint64)<<(b*q.shape[1]+j)
  return np.argsort(key,kind='stable')
 def stream(g,u,d,order,mode):
- gg=g[order];uu=u[order];dd=d[:,order].T # neuron-major
+ gg=g[order];uu=u[order];dd=d[:,order].T
  if mode=='raw':return np.concatenate([gg.ravel(),uu.ravel(),dd.ravel()])
  def r(x):
   p=np.zeros_like(x);p[1:]=x[:-1]
@@ -63,8 +63,8 @@ def main():
    g,u,d=map(rd,ns);assert g.shape==u.shape and d.shape==(g.shape[1],g.shape[0])
    print('layer',l,g.shape,flush=True);ftr=signatures(g,u,d)
    orders={'identity':np.arange(len(g)),'mean':np.argsort(ftr[:,0],kind='stable'),'std':np.argsort(ftr[:,1],kind='stable'),'morton':morton(ftr),'pc0':np.argsort(ftr[:,2],kind='stable')}
-   raw=H(stream(g,u,d,orders['identity'],'raw'));best=None;allr=[];side=math.ceil(math.log2(math.factorial(len(g))))/(g.size+u.size+d.size)
-   # lgamma avoids enormous integer in report, but factorial above may be too huge; override exact Stirling/gamma.
+   raw=H(stream(g,u,d,orders['identity'],'raw'));best=None;allr=[]
+   # Exact log2(n!) via lgamma, charged once over all three matrices.
    side=math.lgamma(len(g)+1)/math.log(2)/(g.size+u.size+d.size)
    for on,o in orders.items():
     for m in ('xor','delta','odelta'):
