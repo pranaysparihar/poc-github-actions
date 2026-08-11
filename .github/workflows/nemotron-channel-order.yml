@@ -1,0 +1,38 @@
+name: Nemotron bounded channel ordering
+on:
+  pull_request:
+    paths:
+      - 'nemotron_lossless_lab/channel_order_probe.py'
+      - '.github/workflows/nemotron-channel-order.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: nemotron_lossless_lab/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .hf-cache
+          key: nemotron-3-embed-1b-bf16-0677b2025cbc
+      - run: python -m pip install -r nemotron_lossless_lab/requirements.txt
+      - run: |
+          mkdir -p results
+          python nemotron_lossless_lab/channel_order_probe.py --max-tensors 8 --sample-mib 8 --output results/channel-order.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nemotron-channel-order
+          path: results/
+          retention-days: 7
